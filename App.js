@@ -1,20 +1,47 @@
-import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+// App.js
+import React from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+
+import SplashScreen from './app/SplashScreen';
+import LoginForm from './app/LoginForm';
+import SignUpForm from './app/SignUpForm';
+import MovieScreenList from './app/MovieScreenList';
+
+const Stack = createNativeStackNavigator();
 
 export default function App() {
   return (
-    <View style={styles.container}>
-      <Text>Open up App.js to start working on your app!</Text>
-      <StatusBar style="auto" />
-    </View>
+    <NavigationContainer>
+      <Stack.Navigator
+        initialRouteName="Splash"
+        screenOptions={{
+          headerShown: false, // hide default headers
+        }}
+      >
+        <Stack.Screen name="Splash" component={SplashScreenWrapper} />
+        <Stack.Screen name="Login" component={LoginFormWrapper} />
+        <Stack.Screen name="SignUp" component={SignUpFormWrapper} />
+        <Stack.Screen name="Movies" component={MovieScreenList} />
+      </Stack.Navigator>
+    </NavigationContainer>
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-});
+// Wrappers to navigate after splash/login
+function SplashScreenWrapper({ navigation }) {
+  return <SplashScreen onFinish={() => navigation.replace('Login')} />;
+}
+
+function LoginFormWrapper({ navigation }) {
+  return (
+    <LoginForm
+      onSignUpPress={() => navigation.navigate('SignUp')}
+      onLoginPress={() => navigation.replace('Movies')}
+    />
+  );
+}
+
+function SignUpFormWrapper({ navigation }) {
+  return <SignUpForm onLoginPress={() => navigation.replace('Login')} />;
+}
