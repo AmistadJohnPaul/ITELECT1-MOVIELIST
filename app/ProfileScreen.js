@@ -12,16 +12,25 @@ import {
   ScrollView,
   ActivityIndicator,
   Platform,
-  PermissionsAndroid
+  PermissionsAndroid,
+  Animated,
+  Dimensions,
+  SafeAreaView
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
+import * as ImagePicker from 'expo-image-picker';
+import { useNavigation } from '@react-navigation/native';
+import { Ionicons, MaterialIcons, FontAwesome } from '@expo/vector-icons';
+
+const { width, height } = Dimensions.get('window');
 
 export default function ProfileScreen() {
+  const navigation = useNavigation();
   const [user, setUser] = useState({
     name: 'Guest User',
     email: 'guest@example.com',
     profileImage: 'https://via.placeholder.com/120',
+    joinDate: new Date().toISOString(),
   });
 
   const [isEditModalVisible, setIsEditModalVisible] = useState(false);
@@ -32,6 +41,24 @@ export default function ProfileScreen() {
   });
   const [isLoading, setIsLoading] = useState(false);
   const [imageLoading, setImageLoading] = useState(false);
+  const [fadeAnim] = useState(new Animated.Value(0));
+  const [slideAnim] = useState(new Animated.Value(50));
+
+  // Animation on mount
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 600,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, []);
 
   useEffect(() => {
     loadUser();
@@ -42,40 +69,41 @@ export default function ProfileScreen() {
       const name = await AsyncStorage.getItem('userName');
       const email = await AsyncStorage.getItem('userEmail');
       const profileImage = await AsyncStorage.getItem('userProfileImage');
+      const joinDate = await AsyncStorage.getItem('userJoinDate') || new Date().toISOString();
 
       setUser({
         name: name || 'Guest User',
         email: email || 'guest@example.com',
         profileImage: profileImage || 'https://via.placeholder.com/120',
+        joinDate: joinDate,
       });
+
+      // Store join date if not exists
+      if (!await AsyncStorage.getItem('userJoinDate')) {
+        await AsyncStorage.setItem('userJoinDate', joinDate);
+      }
     } catch (error) {
       console.error('Failed to load user data', error);
     }
   };
 
-  // Request Android permissions
-  const requestAndroidPermission = async (permissionType) => {
-    try {
-      let permission;
-      if (permissionType === 'camera') {
-        permission = PermissionsAndroid.PERMISSIONS.CAMERA;
-      } else if (permissionType === 'storage') {
-        permission = PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE;
-      }
+  // Calculate profile completion percentage
+  const calculateProfileCompletion = () => {
+    let completion = 0;
+    if (user.name !== 'Guest User') completion += 40;
+    if (user.email !== 'guest@example.com') completion += 30;
+    if (user.profileImage !== 'https://via.placeholder.com/120') completion += 30;
+    return completion;
+  };
 
-      const granted = await PermissionsAndroid.request(permission, {
-        title: `${permissionType === 'camera' ? 'Camera' : 'Storage'} Permission`,
-        message: `This app needs access to your ${permissionType} to function properly.`,
-        buttonNeutral: 'Ask Me Later',
-        buttonNegative: 'Cancel',
-        buttonPositive: 'OK',
-      });
-      
-      return granted === PermissionsAndroid.RESULTS.GRANTED;
-    } catch (err) {
-      console.warn(err);
-      return false;
-    }
+  // Format join date
+  const formatJoinDate = () => {
+    const date = new Date(user.joinDate);
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'long', 
+      day: 'numeric' 
+    });
   };
 
   const openEditModal = () => {
@@ -111,13 +139,29 @@ export default function ProfileScreen() {
       await AsyncStorage.setItem('userProfileImage', editForm.profileImage);
 
       setUser({
+        ...user,
         name: editForm.name,
         email: editForm.email,
         profileImage: editForm.profileImage,
       });
 
       closeEditModal();
-      Alert.alert('Success', 'Profile updated successfully!');
+      
+      // Success animation
+      Animated.sequence([
+        Animated.timing(fadeAnim, {
+          toValue: 0.5,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }),
+      ]).start();
+
+      Alert.alert('🎉 Success', 'Profile updated successfully!');
     } catch (error) {
       console.error('Failed to save user data', error);
       Alert.alert('Error', 'Failed to save profile changes');
@@ -126,110 +170,75 @@ export default function ProfileScreen() {
     }
   };
 
+  // Enhanced image selection with better error handling
   const selectImageFromGallery = async () => {
-    console.log('Opening gallery...');
-    
-    // Request permission for Android
-    if (Platform.OS === 'android') {
-      const hasPermission = await requestAndroidPermission('storage');
-      if (!hasPermission) {
-        Alert.alert('Permission Denied', 'Need storage permission to access gallery');
+    try {
+      setImageLoading(true);
+
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert("Permission Needed", "Please allow gallery access in settings to choose photos.");
+        setImageLoading(false);
         return;
       }
-    }
 
-    const options = {
-      mediaType: 'photo',
-      quality: 0.8,
-      maxWidth: 500,
-      maxHeight: 500,
-      includeBase64: false,
-    };
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.9,
+        allowsEditing: true,
+        aspect: [1, 1],
+        allowsMultipleSelection: false,
+      });
 
-    launchImageLibrary(options, (response) => {
-      console.log('Gallery Response:', response);
-      
-      if (response.didCancel) {
-        console.log('User cancelled gallery picker');
-      } else if (response.errorCode) {
-        console.log('ImagePicker Error Code: ', response.errorCode);
-        console.log('ImagePicker Error Message: ', response.errorMessage);
-        Alert.alert('Error', `Failed to pick image: ${response.errorMessage}`);
-      } else if (response.assets && response.assets.length > 0) {
-        const imageUri = response.assets[0].uri;
-        console.log('Selected image URI:', imageUri);
-        
-        setImageLoading(true);
-        setEditForm({
-          ...editForm,
-          profileImage: imageUri,
-        });
-        
-        setTimeout(() => {
-          setImageLoading(false);
-          Alert.alert('Success', 'Profile picture updated from gallery!');
-        }, 500);
-      } else {
-        console.log('Unexpected response:', response);
+      if (!result.canceled && result.assets && result.assets[0]) {
+        setEditForm(prev => ({
+          ...prev,
+          profileImage: result.assets[0].uri,
+        }));
       }
-    });
+    } catch (err) {
+      console.error("Gallery error:", err);
+      Alert.alert("Error", "Unable to access gallery. Please try again.");
+    } finally {
+      setImageLoading(false);
+    }
   };
 
   const takePhoto = async () => {
-    console.log('Opening camera...');
-    
-    // Request permission for Android
-    if (Platform.OS === 'android') {
-      const hasPermission = await requestAndroidPermission('camera');
-      if (!hasPermission) {
-        Alert.alert('Permission Denied', 'Need camera permission to take photos');
+    try {
+      setImageLoading(true);
+
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert("Permission Needed", "Please allow camera access in settings to take photos.");
+        setImageLoading(false);
         return;
       }
-    }
 
-    const options = {
-      mediaType: 'photo',
-      quality: 0.8,
-      maxWidth: 500,
-      maxHeight: 500,
-      includeBase64: false,
-      saveToPhotos: true,
-      cameraType: 'back',
-    };
+      const result = await ImagePicker.launchCameraAsync({
+        quality: 0.9,
+        allowsEditing: true,
+        aspect: [1, 1],
+      });
 
-    launchCamera(options, (response) => {
-      console.log('Camera Response:', response);
-      
-      if (response.didCancel) {
-        console.log('User cancelled camera');
-      } else if (response.errorCode) {
-        console.log('Camera Error Code: ', response.errorCode);
-        console.log('Camera Error Message: ', response.errorMessage);
-        Alert.alert('Error', `Failed to take photo: ${response.errorMessage}`);
-      } else if (response.assets && response.assets.length > 0) {
-        const imageUri = response.assets[0].uri;
-        console.log('Camera image URI:', imageUri);
-        
-        setImageLoading(true);
-        setEditForm({
-          ...editForm,
-          profileImage: imageUri,
-        });
-        
-        setTimeout(() => {
-          setImageLoading(false);
-          Alert.alert('Success', 'Photo taken successfully!');
-        }, 500);
-      } else {
-        console.log('Unexpected camera response:', response);
+      if (!result.canceled && result.assets && result.assets[0]) {
+        setEditForm(prev => ({
+          ...prev,
+          profileImage: result.assets[0].uri,
+        }));
       }
-    });
+    } catch (err) {
+      console.error("Camera error:", err);
+      Alert.alert("Error", "Unable to access camera. Please try again.");
+    } finally {
+      setImageLoading(false);
+    }
   };
 
   const handleImageOption = () => {
     Alert.alert(
       'Choose Profile Picture',
-      'Select an option to set your profile picture',
+      'How would you like to set your profile picture?',
       [
         {
           text: '📷 Take Photo',
@@ -240,6 +249,10 @@ export default function ProfileScreen() {
           onPress: selectImageFromGallery,
         },
         {
+          text: '🎨 Use Default',
+          onPress: useDefaultImage,
+        },
+        {
           text: 'Cancel',
           style: 'cancel',
         },
@@ -248,202 +261,410 @@ export default function ProfileScreen() {
   };
 
   const useDefaultImage = () => {
-    setEditForm({
-      ...editForm,
+    setEditForm(prev => ({
+      ...prev,
       profileImage: 'https://via.placeholder.com/120',
-    });
-    Alert.alert('Success', 'Default profile picture set!');
+    }));
   };
 
-  const handleImageError = (error) => {
-    console.log('Image loading error:', error);
-    setEditForm({
-      ...editForm,
+  const handleImageError = () => {
+    setEditForm(prev => ({
+      ...prev,
       profileImage: 'https://via.placeholder.com/120',
-    });
+    }));
   };
+
+  const handleLogout = () => {
+    Alert.alert(
+      'Logout',
+      'Are you sure you want to logout?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Logout',
+          style: 'destructive',
+          onPress: async () => {
+            await AsyncStorage.multiRemove(['userName', 'userEmail', 'userProfileImage']);
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Login' }], // Replace with your actual login screen name
+            });
+          },
+        },
+      ]
+    );
+  };
+
+  const ProfileStat = ({ icon, label, value }) => (
+    <View style={styles.statItem}>
+      <Text style={styles.statIcon}>{icon}</Text>
+      <Text style={styles.statLabel}>{label}</Text>
+      <Text style={styles.statValue}>{value}</Text>
+    </View>
+  );
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.greeting}>👤 Hello, {user.name}!</Text>
-
-      <Image 
-        source={{ uri: user.profileImage }} 
-        style={styles.profileImage}
-        onError={() => console.log('Main profile image failed to load')}
-      />
-
-      <Text style={styles.name}>{user.name}</Text>
-      <Text style={styles.email}>{user.email}</Text>
-
-      <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.button} onPress={openEditModal}>
-          <Text style={styles.buttonText}>Edit Profile</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Edit Profile Modal */}
-      <Modal
-        visible={isEditModalVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={closeEditModal}
+    <SafeAreaView style={styles.container}>
+      <Animated.View 
+        style={[
+          styles.animatedContainer,
+          {
+            opacity: fadeAnim,
+            transform: [{ translateY: slideAnim }],
+          }
+        ]}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              <Text style={styles.modalTitle}>Edit Profile</Text>
-              
-              {/* Profile Image Section */}
-              <View style={styles.imageSection}>
-                <View style={styles.imageWrapper}>
-                  {imageLoading ? (
-                    <View style={[styles.previewImage, styles.loadingImage]}>
-                      <ActivityIndicator size="large" color="#f5c518" />
-                      <Text style={styles.loadingText}>Loading Image...</Text>
-                    </View>
-                  ) : (
-                    <Image 
-                      source={{ uri: editForm.profileImage }} 
-                      style={styles.previewImage}
-                      onError={handleImageError}
-                    />
-                  )}
+        {/* Header */}
+        <View style={styles.header}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons name="arrow-back" size={26} color="#f5c518" />
+          </TouchableOpacity>
+          <Text style={styles.headerTitle}>Profile</Text>
+          <View style={styles.headerPlaceholder} />
+        </View>
+
+        {/* Profile Completion */}
+        <View style={styles.completionContainer}>
+          <View style={styles.completionHeader}>
+            <Text style={styles.completionTitle}>Profile Completion</Text>
+            <Text style={styles.completionPercentage}>{calculateProfileCompletion()}%</Text>
+          </View>
+          <View style={styles.progressBar}>
+            <View 
+              style={[
+                styles.progressFill, 
+                { width: `${calculateProfileCompletion()}%` }
+              ]} 
+            />
+          </View>
+          <Text style={styles.completionHint}>
+            Complete your profile by adding a photo and personal details
+          </Text>
+        </View>
+
+        {/* Profile Info */}
+        <View style={styles.profileCard}>
+          <View style={styles.imageContainer}>
+            <Image 
+              source={{ uri: user.profileImage }} 
+              style={styles.profileImage}
+              onError={() => console.log('Profile image load failed')}
+            />
+            <View style={styles.onlineIndicator} />
+          </View>
+          
+          <Text style={styles.name}>{user.name}</Text>
+          <Text style={styles.email}>{user.email}</Text>
+          
+          <View style={styles.statsContainer}>
+            <ProfileStat icon="📅" label="Member since" value={formatJoinDate()} />
+            <ProfileStat icon="⭐" label="Status" value="Premium" />
+            <ProfileStat icon="🎬" label="Movies watched" value="24" />
+          </View>
+        </View>
+
+        {/* Action Buttons */}
+        <View style={styles.actionButtons}>
+          <TouchableOpacity style={styles.primaryButton} onPress={openEditModal}>
+            <Ionicons name="create-outline" size={20} color="#1a1a1a" />
+            <Text style={styles.primaryButtonText}>Edit Profile</Text>
+          </TouchableOpacity>
+          
+          <TouchableOpacity style={styles.secondaryButton} onPress={handleLogout}>
+            <Ionicons name="log-out-outline" size={20} color="#f5c518" />
+            <Text style={styles.secondaryButtonText}>Logout</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Edit Profile Modal */}
+        <Modal
+          visible={isEditModalVisible}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={closeEditModal}
+        >
+          <View style={styles.modalContainer}>
+            <View style={styles.modalContent}>
+              <ScrollView showsVerticalScrollIndicator={false}>
+                <View style={styles.modalHeader}>
+                  <Text style={styles.modalTitle}>Edit Profile</Text>
+                  <TouchableOpacity onPress={closeEditModal} style={styles.closeButton}>
+                    <Ionicons name="close" size={24} color="#fff" />
+                  </TouchableOpacity>
                 </View>
                 
-                <View style={styles.imageButtonsContainer}>
+                {/* Profile Image Section */}
+                <View style={styles.imageSection}>
+                  <View style={styles.imageWrapper}>
+                    {imageLoading ? (
+                      <View style={[styles.previewImage, styles.loadingImage]}>
+                        <ActivityIndicator size="large" color="#f5c518" />
+                        <Text style={styles.loadingText}>Loading Image...</Text>
+                      </View>
+                    ) : (
+                      <Image 
+                        source={{ uri: editForm.profileImage }} 
+                        style={styles.previewImage}
+                        onError={handleImageError}
+                      />
+                    )}
+                  </View>
+                  
                   <TouchableOpacity 
-                    style={[styles.imageButton, styles.primaryImageButton]} 
+                    style={styles.imageChangeButton} 
                     onPress={handleImageOption}
                     disabled={imageLoading}
                   >
-                    <Text style={styles.primaryImageButtonText}>
-                      {imageLoading ? 'Loading...' : '📷 Choose Photo'}
+                    <Ionicons name="camera" size={20} color="#fff" />
+                    <Text style={styles.imageChangeButtonText}>
+                      {imageLoading ? 'Loading...' : 'Change Photo'}
                     </Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity 
-                    style={[styles.imageButton, styles.secondaryImageButton]} 
-                    onPress={useDefaultImage}
-                    disabled={imageLoading}
-                  >
-                    <Text style={styles.secondaryImageButtonText}>🔄 Default</Text>
                   </TouchableOpacity>
                 </View>
                 
-                <Text style={styles.imageHelpText}>
-                  Tap "Choose Photo" to take a picture or select from gallery
-                </Text>
-              </View>
-              
-              <Text style={styles.label}>Name *</Text>
-              <TextInput
-                style={styles.input}
-                value={editForm.name}
-                onChangeText={(text) => setEditForm({...editForm, name: text})}
-                placeholder="Enter your name"
-                placeholderTextColor="#888"
-              />
-              
-              <Text style={styles.label}>Email *</Text>
-              <TextInput
-                style={styles.input}
-                value={editForm.email}
-                onChangeText={(text) => setEditForm({...editForm, email: text})}
-                placeholder="Enter your email"
-                placeholderTextColor="#888"
-                keyboardType="email-address"
-                autoCapitalize="none"
-              />
-              
-              <Text style={styles.label}>Profile Image URL</Text>
-              <TextInput
-                style={styles.input}
-                value={editForm.profileImage}
-                onChangeText={(text) => setEditForm({...editForm, profileImage: text})}
-                placeholder="Or enter image URL manually"
-                placeholderTextColor="#888"
-                autoCapitalize="none"
-              />
+                <Text style={styles.label}>Display Name *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editForm.name}
+                  onChangeText={(text) => setEditForm({...editForm, name: text})}
+                  placeholder="Enter your name"
+                  placeholderTextColor="#888"
+                />
+                
+                <Text style={styles.label}>Email Address *</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editForm.email}
+                  onChangeText={(text) => setEditForm({...editForm, email: text})}
+                  placeholder="Enter your email"
+                  placeholderTextColor="#888"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+                
+                <Text style={styles.label}>Profile Image URL</Text>
+                <TextInput
+                  style={styles.input}
+                  value={editForm.profileImage}
+                  onChangeText={(text) => setEditForm({...editForm, profileImage: text})}
+                  placeholder="Or enter image URL manually"
+                  placeholderTextColor="#888"
+                  autoCapitalize="none"
+                />
 
-              <View style={styles.modalButtonContainer}>
-                <TouchableOpacity 
-                  style={[styles.modalButton, styles.cancelButton]} 
-                  onPress={closeEditModal}
-                  disabled={isLoading}
-                >
-                  <Text style={styles.cancelButtonText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={[styles.modalButton, styles.saveButton]} 
-                  onPress={handleSaveProfile}
-                  disabled={isLoading}
-                >
-                  {isLoading ? (
-                    <ActivityIndicator color="#1a1a1a" size="small" />
-                  ) : (
-                    <Text style={styles.saveButtonText}>Save Changes</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
+                <View style={styles.modalButtonContainer}>
+                  <TouchableOpacity 
+                    style={[styles.modalButton, styles.cancelButton]} 
+                    onPress={closeEditModal}
+                    disabled={isLoading}
+                  >
+                    <Text style={styles.cancelButtonText}>Cancel</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={[styles.modalButton, styles.saveButton]} 
+                    onPress={handleSaveProfile}
+                    disabled={isLoading}
+                  >
+                    {isLoading ? (
+                      <ActivityIndicator color="#1a1a1a" size="small" />
+                    ) : (
+                      <>
+                        <Ionicons name="checkmark" size={18} color="#1a1a1a" />
+                        <Text style={styles.saveButtonText}>Save Changes</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              </ScrollView>
+            </View>
           </View>
-        </View>
-      </Modal>
-    </View>
+        </Modal>
+      </Animated.View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { 
     flex: 1, 
-    backgroundColor: '#1a1a1a', 
-    justifyContent: 'center', 
-    alignItems: 'center',
+    backgroundColor: '#1a1a1a',
+  },
+  animatedContainer: {
+    flex: 1,
     paddingHorizontal: 20,
   },
-  greeting: {
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+    marginTop: 10,
+  },
+  backButton: {
+    padding: 8,
+    borderRadius: 20,
+    backgroundColor: '#00000080',
+    marginTop:35,
+  },
+  headerTitle: {
     color: '#f5c518',
-    fontSize: 20,
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginTop:35,
+  },
+  headerPlaceholder: {
+    width: 40,
+  },
+  completionContainer: {
+    backgroundColor: '#2a2a2a',
+    padding: 20,
+    borderRadius: 15,
+    marginBottom: 20,
+  },
+  completionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  completionTitle: {
+    color: '#fff',
+    fontSize: 16,
     fontWeight: '600',
+  },
+  completionPercentage: {
+    color: '#f5c518',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  progressBar: {
+    height: 6,
+    backgroundColor: '#3a3a3a',
+    borderRadius: 3,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#f5c518',
+    borderRadius: 3,
+  },
+  completionHint: {
+    color: '#888',
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+  profileCard: {
+    backgroundColor: '#2a2a2a',
+    padding: 25,
+    borderRadius: 20,
+    alignItems: 'center',
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  imageContainer: {
+    position: 'relative',
     marginBottom: 15,
   },
   profileImage: {
     width: 120,
     height: 120,
     borderRadius: 60,
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: '#f5c518',
-    marginBottom: 20,
+  },
+  onlineIndicator: {
+    position: 'absolute',
+    bottom: 8,
+    right: 8,
+    width: 20,
+    height: 20,
+    backgroundColor: '#4CAF50',
+    borderRadius: 10,
+    borderWidth: 2,
+    borderColor: '#2a2a2a',
   },
   name: {
     color: '#f5c518',
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: 'bold',
     marginBottom: 5,
+    textAlign: 'center',
   },
   email: {
     color: '#ccc',
     fontSize: 16,
-    marginBottom: 30,
+    marginBottom: 20,
+    textAlign: 'center',
   },
-  buttonContainer: {
+  statsContainer: {
     flexDirection: 'row',
-    gap: 15,
+    justifyContent: 'space-around',
+    width: '100%',
+    marginTop: 10,
   },
-  button: {
+  statItem: {
+    alignItems: 'center',
+  },
+  statIcon: {
+    fontSize: 20,
+    marginBottom: 5,
+  },
+  statLabel: {
+    color: '#888',
+    fontSize: 12,
+    marginBottom: 2,
+  },
+  statValue: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+  actionButtons: {
+    gap: 12,
+  },
+  primaryButton: {
     backgroundColor: '#f5c518',
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 15,
+    borderRadius: 12,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 3 },
+    shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.3,
     shadowRadius: 4,
     elevation: 5,
+    gap: 8,
   },
-  buttonText: {
+  primaryButtonText: {
     color: '#1a1a1a',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  secondaryButton: {
+    backgroundColor: 'transparent',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 15,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: '#f5c518',
+    gap: 8,
+  },
+  secondaryButtonText: {
+    color: '#f5c518',
     fontWeight: 'bold',
     fontSize: 16,
   },
@@ -452,38 +673,50 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    backgroundColor: 'rgba(0, 0, 0, 0.9)',
     padding: 20,
   },
   modalContent: {
     backgroundColor: '#2a2a2a',
-    borderRadius: 15,
+    borderRadius: 20,
     padding: 25,
     width: '100%',
     maxWidth: 400,
-    maxHeight: '80%',
+    maxHeight: '85%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.5,
+    shadowRadius: 20,
+    elevation: 10,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
   },
   modalTitle: {
     color: '#f5c518',
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 20,
-    textAlign: 'center',
+  },
+  closeButton: {
+    padding: 4,
   },
   imageSection: {
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 25,
   },
   imageWrapper: {
     position: 'relative',
+    marginBottom: 15,
   },
   previewImage: {
     width: 120,
     height: 120,
     borderRadius: 60,
-    borderWidth: 2,
+    borderWidth: 3,
     borderColor: '#f5c518',
-    marginBottom: 15,
   },
   loadingImage: {
     justifyContent: 'center',
@@ -495,54 +728,31 @@ const styles = StyleSheet.create({
     marginTop: 8,
     fontSize: 12,
   },
-  imageButtonsContainer: {
+  imageChangeButton: {
     flexDirection: 'row',
-    gap: 10,
-    marginBottom: 10,
-  },
-  imageButton: {
-    paddingVertical: 10,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    borderWidth: 1,
-    minWidth: 120,
     alignItems: 'center',
+    backgroundColor: '#3a3a3a',
+    paddingVertical: 10,
+    paddingHorizontal: 20,
+    borderRadius: 25,
+    gap: 8,
   },
-  primaryImageButton: {
-    backgroundColor: '#f5c518',
-    borderColor: '#f5c518',
-  },
-  secondaryImageButton: {
-    backgroundColor: 'transparent',
-    borderColor: '#f5c518',
-  },
-  primaryImageButtonText: {
-    color: '#1a1a1a',
+  imageChangeButtonText: {
+    color: '#fff',
     fontWeight: '600',
     fontSize: 14,
-  },
-  secondaryImageButtonText: {
-    color: '#f5c518',
-    fontWeight: '600',
-    fontSize: 14,
-  },
-  imageHelpText: {
-    color: '#888',
-    fontSize: 12,
-    textAlign: 'center',
-    fontStyle: 'italic',
   },
   label: {
     color: '#f5c518',
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: 15,
     marginTop: 12,
   },
   input: {
     backgroundColor: '#3a3a3a',
-    borderRadius: 8,
-    padding: 12,
+    borderRadius: 12,
+    padding: 15,
     color: '#fff',
     fontSize: 16,
     borderWidth: 1,
@@ -552,13 +762,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: 25,
-    gap: 15,
+    gap: 12,
   },
   modalButton: {
     flex: 1,
-    paddingVertical: 12,
-    borderRadius: 8,
+    flexDirection: 'row',
     alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 15,
+    borderRadius: 12,
+    gap: 8,
   },
   cancelButton: {
     backgroundColor: '#555',

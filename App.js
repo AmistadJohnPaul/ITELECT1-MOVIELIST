@@ -7,10 +7,10 @@ import SplashScreen from './app/SplashScreen';
 import LoginForm from './app/LoginForm';
 import RegisterForm from './app/RegisterForm';
 import MovieScreenList from './app/MovieScreenList';
-import MovieDetails from './app/MovieDetails';  
+import MovieDetails from './app/MovieDetails';
 import ProfileScreen from './app/ProfileScreen';
 import SearchScreen from './app/SearchScreen';
-import FavoritesScreen from './app/FavoriteScreen';
+import FavoritesScreen from './app/FavoritesScreen';
 import SettingScreen from './app/SettingScreen';
 import AboutApp from './app/Settings/AboutApp';
 import AccountSettings from './app/Settings/AccountSettings';
@@ -18,10 +18,37 @@ import Notifications from './app/Settings/Notifications';
 import PrivacySecurity from './app/Settings/PrivacySecurity';
 import Language from './app/Settings/Language';
 import HelpSupport from './app/Settings/HelpSupport';
-// ✅ Import FavoritesProvider
+import ChangePasswordScreen from './app/ChangePasswordScreen';
+
+// ✅ Import FavoritesProvider and LanguageProvider
 import { FavoritesProvider } from './app/Context/FavoritesContext';
+import { LanguageProvider } from './app/Context/LanguageContext';
 
 const Stack = createNativeStackNavigator();
+
+// ✅ Move wrapper components outside the main App component
+const SplashScreenWrapper = ({ navigation }) => {
+  return <SplashScreen onFinish={() => navigation.replace('Login')} />;
+};
+
+const LoginWrapper = ({ navigation }) => {
+  return (
+    <LoginForm
+      navigation={navigation}
+      onRegisterPress={() => navigation.navigate('Register')}
+      onLoginPress={() => navigation.replace('Movies')}
+    />
+  );
+};
+
+const RegisterFormWrapper = ({ navigation }) => {
+  return (
+    <RegisterForm
+      navigation={navigation}
+      onLoginPress={() => navigation.replace('Login')}
+    />
+  );
+};
 
 export default function App() {
   // Development-only global error catcher to surface full stacks in Metro
@@ -68,75 +95,35 @@ export default function App() {
       console.log('[GlobalErrorHandler] unhandledRejection setup failed', e);
     }
   }, []);
+
   return (
-    // ⭐ Wrap the app with FavoritesProvider
+    // ⭐ Wrap the app with both FavoritesProvider and LanguageProvider
     <FavoritesProvider>
-      <NavigationContainer>
-        <Stack.Navigator
-          initialRouteName="Splash"
-          screenOptions={{ headerShown: false }}
-        >
-          {/* ✅ Splash wrapped to handle auto-navigation */}
-          <Stack.Screen name="Splash" component={SplashScreenWrapper} />
-
-          {/* ✅ Login wrapped to handle navigation to Register or Movies */}
-          <Stack.Screen name="Login" component={LoginWrapper} />
-
-          {/* ✅ Register wrapped to navigate back to Login */}
-          <Stack.Screen name="Register" component={RegisterFormWrapper} />
-          
-
-          <Stack.Screen name="Movies" component={MovieScreenList} />
-
-          <Stack.Screen name="MovieDetails" component={MovieDetails} />
-
-          <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
-
-          <Stack.Screen name="SearchScreen" component={SearchScreen} />
-
-          <Stack.Screen name="FavoritesScreen" component={FavoritesScreen} />
-
-          <Stack.Screen name="SettingScreen" component={SettingScreen} />
-
-          <Stack.Screen name="AccountSettings" component={AccountSettings} />
-          
-<Stack.Screen name="Notifications" component={Notifications} />
-<Stack.Screen name="PrivacySecurity" component={PrivacySecurity} />
-<Stack.Screen name="Language" component={Language} />
-<Stack.Screen name="HelpSupport" component={HelpSupport} />
-<Stack.Screen name="AboutApp" component={AboutApp} />
-
-
-        </Stack.Navigator>
-      </NavigationContainer>
+      <LanguageProvider>
+        <NavigationContainer>
+          <Stack.Navigator
+            initialRouteName="Splash"
+            screenOptions={{ headerShown: false }}
+          >
+            <Stack.Screen name="Splash" component={SplashScreenWrapper} />
+            <Stack.Screen name="Login" component={LoginWrapper} />
+            <Stack.Screen name="Register" component={RegisterFormWrapper} />
+            <Stack.Screen name="Movies" component={MovieScreenList} />
+            <Stack.Screen name="MovieDetails" component={MovieDetails} />
+            <Stack.Screen name="ProfileScreen" component={ProfileScreen} />
+            <Stack.Screen name="SearchScreen" component={SearchScreen} />
+            <Stack.Screen name="FavoritesScreen" component={FavoritesScreen} />
+            <Stack.Screen name="SettingScreen" component={SettingScreen} />
+            <Stack.Screen name="AccountSettings" component={AccountSettings} />
+            <Stack.Screen name="Notifications" component={Notifications} />
+            <Stack.Screen name="PrivacySecurity" component={PrivacySecurity} />
+            <Stack.Screen name="Language" component={Language} />
+            <Stack.Screen name="HelpSupport" component={HelpSupport} />
+            <Stack.Screen name="AboutApp" component={AboutApp} />
+            <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
+          </Stack.Navigator>
+        </NavigationContainer>
+      </LanguageProvider>
     </FavoritesProvider>
   );
 }
-
-// ✅ Wrapper for Splash — goes to Login after animation
-function SplashScreenWrapper({ navigation }) {
-  return <SplashScreen onFinish={() => navigation.replace('Login')} />;
-}
-
-// ✅ Wrapper for Login — can navigate to Register or Movies
-function LoginWrapper({ navigation }) {
-  return (
-    <LoginForm
-      navigation={navigation}  // ✅ pass navigation here too
-      onRegisterPress={() => navigation.navigate('Register')}
-      onLoginPress={() => navigation.replace('Movies')}
-    />
-  );
-}
-
-
-// ✅ Wrapper for Register — can navigate back to Login
-function RegisterFormWrapper({ navigation }) {
-  return (
-    <RegisterForm
-      navigation={navigation}    // ✅ pass navigation here
-      onLoginPress={() => navigation.replace('Login')}
-    />
-  );
-}
-

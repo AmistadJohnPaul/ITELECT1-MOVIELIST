@@ -1,12 +1,45 @@
 // MovieList/app/SplashScreen.js
 import React, { useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Image, Animated } from 'react-native';
+import { Audio } from 'expo-av';
 
 export default function SplashScreen({ onFinish = () => {} }) {
   const fade = useRef(new Animated.Value(0)).current;
   const scale = useRef(new Animated.Value(0.7)).current;
+  const soundRef = useRef(null);
 
   useEffect(() => {
+    let isMounted = true;
+
+    const playAudio = async () => {
+      try {
+        // Request audio permissions
+        await Audio.requestPermissionsAsync();
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+          playsInSilentModeIOS: true,
+          staysActiveInBackground: false,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        });
+
+        // Load and play the sound
+        const { sound } = await Audio.Sound.createAsync(
+          require('../assets/audio.mp3')
+        );
+        
+        if (isMounted) {
+          soundRef.current = sound;
+          await sound.playAsync();
+        }
+      } catch (error) {
+        console.log('Error playing audio:', error);
+      }
+    };
+
+    // Start audio playback
+    playAudio();
+
     // Sequence: Fade in + scale, wait, fade out
     Animated.sequence([
       // Fade in + zoom
@@ -32,8 +65,20 @@ export default function SplashScreen({ onFinish = () => {} }) {
         useNativeDriver: true,
       }),
     ]).start(() => {
+      // Clean up audio when animation completes
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+      }
       onFinish(); // call parent callback when done
     });
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      if (soundRef.current) {
+        soundRef.current.unloadAsync();
+      }
+    };
   }, [fade, scale, onFinish]);
 
   return (
