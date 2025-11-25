@@ -8,9 +8,14 @@ import {
   StyleSheet,
   Alert,
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getAuth, createUserWithEmailAndPassword } from "firebase/auth";
+import { getFirestore, doc, setDoc } from "firebase/firestore";
+import { app } from "./firebase/FirebaseConfig"; // make sure this file exists
 
 export default function RegisterForm({ navigation }) {
+  const auth = getAuth(app);
+  const db = getFirestore(app);
+
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,6 +26,38 @@ export default function RegisterForm({ navigation }) {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const passwordRegex =
     /^(?=.*[A-Z])(?=.*\d)(?=.*[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]).{6,}$/;
+
+  // ✅ Firebase register function
+  const registerUser = async (email, password, username) => {
+    try {
+      // Create Authentication user
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const uid = userCredential.user.uid;
+
+      // Save user info in Firestore
+      await setDoc(doc(db, "users", uid), {
+        username,
+        email,
+        createdAt: new Date()
+      });
+
+      // Show success alert and redirect to Login after OK
+      Alert.alert(
+        "Success",
+        "Account created successfully!",
+        [
+          {
+            text: "OK",
+            onPress: () => navigation.replace("Login"),
+          },
+        ]
+      );
+
+    } catch (err) {
+      Alert.alert("Error", err.message);
+      console.log(err);
+    }
+  };
 
   const handleRegister = async () => {
     if (!username || !email || !password || !confirmPassword) {
@@ -43,35 +80,8 @@ export default function RegisterForm({ navigation }) {
       return;
     }
 
-    try {
-      // ✅ Save user data
-      await AsyncStorage.setItem('userName', username);
-      await AsyncStorage.setItem('userEmail', email);
-      await AsyncStorage.setItem('userPassword', password);
-      await AsyncStorage.setItem(
-        'userProfileImage',
-        'https://via.placeholder.com/120'
-      ); // default profile image
-
-      Alert.alert('Success', 'Registered successfully! Logging in...', [
-        {
-          text: 'OK',
-          onPress: () => {
-            // Automatically log in after registration
-            const user = {
-              name: username,
-              email,
-              profileImage: 'https://via.placeholder.com/120',
-            };
-            // ✅ Navigate to ProfileScreen (matches App.js name)
-            navigation.replace('Login', { user });
-          },
-        },
-      ]);
-    } catch (error) {
-      Alert.alert('Error', 'Failed to save user data. Please try again.');
-      console.error(error);
-    }
+    // Call Firebase register
+    registerUser(email, password, username);
   };
 
   return (
@@ -118,9 +128,7 @@ export default function RegisterForm({ navigation }) {
           value={confirmPassword}
           onChangeText={setConfirmPassword}
         />
-        <TouchableOpacity
-          onPress={() => setShowConfirmPassword(!showConfirmPassword)}
-        >
+        <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)}>
           <Text style={styles.toggleText}>
             {showConfirmPassword ? '🙈' : '👁️'}
           </Text>
@@ -132,10 +140,7 @@ export default function RegisterForm({ navigation }) {
       </TouchableOpacity>
 
       <TouchableOpacity
-        onPress={() => {
-          // ✅ Navigate to Login screen (matches App.js name)
-          navigation.replace('Login');
-        }}
+        onPress={() => navigation.replace('Login')}
       >
         <Text style={styles.link}>
           Already have an account? <Text style={styles.highlight}>Log In</Text>
