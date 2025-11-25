@@ -1,66 +1,20 @@
 // app/FavoritesScreen.js
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity, Alert } from 'react-native';
+import React from 'react';
+import { View, Text, StyleSheet, FlatList, Image, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation, useRoute } from '@react-navigation/native';
-import { collection, addDoc, getDocs, deleteDoc, doc } from "firebase/firestore";
-import { db } from "./firebase/FirebaseConfig"; // Firestore instance
+import { useNavigation } from '@react-navigation/native';
+import { useFavorites } from './Context/FavoritesContext';
+import { useLanguage } from './Context/LanguageContext';
 
 export default function FavoritesScreen() {
   const navigation = useNavigation();
-  const route = useRoute();
-  const { uid } = route.params; // User ID passed from Login/Profile
-
-  const [favorites, setFavorites] = useState([]);
-
-  // Firestore references
-  const favRef = collection(db, "users", uid, "favorites");
-
-  // Load favorites from Firestore
-  const loadFavorites = async () => {
-    try {
-      const snapshot = await getDocs(favRef);
-      setFavorites(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
-    } catch (err) {
-      console.log("Error loading favorites:", err);
-      Alert.alert("Error", "Failed to load favorites.");
-    }
-  };
-
-  // Add favorite (example function)
-  const addFavorite = async (itemType, itemId, note = '') => {
-    try {
-      if (!itemType || !itemId) {
-        Alert.alert("Error", "Item type and ID are required.");
-        return;
-      }
-      await addDoc(favRef, { itemType, itemId, note, createdAt: new Date() });
-      loadFavorites();
-    } catch (err) {
-      console.log(err);
-      Alert.alert("Error", "Failed to add favorite.");
-    }
-  };
-
-  // Remove favorite
-  const removeFavorite = async (favId) => {
-    try {
-      await deleteDoc(doc(db, "users", uid, "favorites", favId));
-      loadFavorites();
-    } catch (err) {
-      console.log(err);
-      Alert.alert("Error", "Failed to remove favorite.");
-    }
-  };
-
-  useEffect(() => {
-    loadFavorites();
-  }, []);
+  const { favorites } = useFavorites();
+  const { t } = useLanguage();
 
   // Safe translation functions with fallbacks
   const getFavoritesTitle = () => {
     try {
-      return 'Favorites';
+      return t.favorites || 'Favorites';
     } catch (error) {
       return 'Favorites';
     }
@@ -68,7 +22,7 @@ export default function FavoritesScreen() {
 
   const getEmptyStateText = () => {
     try {
-      return 'No favorites added yet';
+      return t.noFavorites || 'No favorites added yet';
     } catch (error) {
       return 'No favorites added yet';
     }
@@ -79,13 +33,10 @@ export default function FavoritesScreen() {
       style={styles.card}
       onPress={() => navigation.navigate('MovieDetails', { movie: item })}
     >
-      <Image source={{ uri: item.image || 'https://via.placeholder.com/100x140' }} style={styles.image} />
+      <Image source={item.image} style={styles.image} />
       <View style={styles.infoBox}>
-        <Text style={styles.title}>{item.itemType}: {item.itemId}</Text>
-        {item.note ? <Text style={styles.category}>{item.note}</Text> : null}
-        <TouchableOpacity onPress={() => removeFavorite(item.id)}>
-          <Text style={{ color: 'red', marginTop: 5 }}>Remove</Text>
-        </TouchableOpacity>
+        <Text style={styles.title}>{item.title}</Text>
+        <Text style={styles.category}>{item.category}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -124,7 +75,7 @@ export default function FavoritesScreen() {
             {getEmptyStateText()}
           </Text>
           <Text style={styles.emptySubtext}>
-            Start adding items to your favorites list
+            Start adding movies to your favorites list
           </Text>
         </View>
       )}
